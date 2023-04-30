@@ -1,78 +1,73 @@
-
 #!/usr/bin/python3
-"""View for the link between Place and Amenity Review
-objects that handles default API actions
 """
-from api.v1.views import app_views
-from flask import jsonify, abort, make_response, request
+View for Amenities that handles all RESTful API actions
+"""
+
+from flask import jsonify, request, abort
 from models import storage
-from models.place import Place
 from models.amenity import Amenity
-from os import getenv
+from api.v1.views import app_views
 
 
-@app_views.route('/places/<place_id>/amenities', methods=['GET'],
-                 strict_slashes=False)
-def places_amenities(place_id):
-    """ Retrieves the list of all Amenities objects in a Place"""
-    place = storage.get("Place", place_id)
-    if not place:
-        abort(404)
-
-    if getenv('HBNB_TYPE_STORAGE') == 'db':
-        l = [amenity.to_dict() for amenity in place.amenities]
-    else:
-        l = [storage.get("Amenity", id).to_dict() for id in place.amenity_ids]
-    return jsonify(l)
+@app_views.route('/amenities', methods=['GET'], strict_slashes=False)
+def amenities_all():
+    """ returns list of all Amenity objects """
+    amenities_all = []
+    amenities = storage.all("Amenity").values()
+    for amenity in amenities:
+        amenities_all.append(amenity.to_json())
+    return jsonify(amenities_all)
 
 
-@app_views.route('/places/<place_id>/amenities/<amenity_id>',
-                 methods=['DELETE'], strict_slashes=False)
-def del_places_amenities(place_id, amenity_id):
-    """ Deletes an Amenity object """
-    place = storage.get("Place", place_id)
-    if not place:
-        abort(404)
-
+@app_views.route('/amenities/<amenity_id>', methods=['GET'])
+def amenity_get(amenity_id):
+    """ handles GET method """
     amenity = storage.get("Amenity", amenity_id)
-    if not amenity:
+    if amenity is None:
         abort(404)
-
-    if getenv('HBNB_TYPE_STORAGE') == 'db':
-        if amenity not in place.amenities:
-            abort(404)
-    else:
-        if amenity_id not in place.amenity_ids:
-            abort(404)
-        index = place.amenity_ids.index(amenity_id)
-        place.amenity_ids.pop(index)
-
-    amenity.delete()
-    storage.save()
-    return make_response(jsonify({}), 200)
+    amenity = amenity.to_json()
+    return jsonify(amenity)
 
 
-@app_views.route('/places/<place_id>/amenities/<amenity_id>',
-                 methods=['POST'],
-                 strict_slashes=False)
-def link_amenity_place(place_id, amenity_id):
-    """ Links an Amenity and a Place """
-    place = storage.get("Place", place_id)
-    if not place:
-        abort(404)
-
+@app_views.route('/amenities/<amenity_id>', methods=['DELETE'])
+def amenity_delete(amenity_id):
+    """ handles DELETE method """
+    empty_dict = {}
     amenity = storage.get("Amenity", amenity_id)
-    if not amenity:
+    if amenity is None:
         abort(404)
-
-    if getenv('HBNB_TYPE_STORAGE') == 'db':
-        if amenity in place.amenities:
-            return make_response(jsonify(amenity.to_dict()), 200)
-        place.amenities.append(amenity)
-    else:
-        if amenity_id in place.amenity_ids:
-            return make_response(jsonify(amenity.to_dict()), 200)
-        place.amenity_ids.append(amenity_id)
-
+    storage.delete(amenity)
     storage.save()
-    return make_response(jsonify(amenity.to_dict()), 201)
+    return jsonify(empty_dict), 200
+
+
+@app_views.route('/amenities', methods=['POST'], strict_slashes=False)
+def amenity_post():
+    """ handles POST method """
+    data = request.get_json()
+    if data is None:
+        abort(400, "Not a JSON")
+    if 'name' not in data:
+        abort(400, "Missing name")
+    amenity = Amenity(**data)
+    amenity.save()
+    amenity = amenity.to_json()
+    return jsonify(amenity), 201
+
+
+@app_views.route('/amenities/<amenity_id>', methods=['PUT'])
+def amenity_put(amenity_id):
+    """ handles PUT method """
+    amenity = storage.get("Amenity", amenity_id)
+    if amenity is None:
+        abort(404)
+    data = request.get_json()
+    if data is None:
+        abort(400, "Not a JSON")
+    for key, value in data.items():
+        ignore_keys = ["id", "created_at", "updated_at"]
+        if key not in ignore_keys:
+            amenity.bm_update(key, value)
+    amenity.save()
+    amenity = amenity.to_json()
+    return jsonify(amenity), 200
